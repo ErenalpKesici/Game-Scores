@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -9,11 +8,12 @@ import 'package:path_provider/path_provider.dart';
 import 'game_played_item.dart';
 import 'package:intl/intl.dart';
 
-List<GamePlayedItem> itms = List.empty(growable: true);
+List<GamePlayedItem> allItems = List.empty(growable: true);
+List<GamePlayedItem> shownItems = List.empty(growable: true);
 List<String> games = List.filled(1, '', growable: true);
 List<String> players = List.filled(1, '', growable: true);
 void fillUniqueLists(){
-  for(GamePlayedItem itm in itms){
+  for(GamePlayedItem itm in allItems){
     bool unique = true;
     for(String game in games){
       if(game == itm.game) {
@@ -46,10 +46,7 @@ void main() async{
   // await File(externalDir!.path +'/Save.json').delete();
   // await File(externalDir!.path +'/Save.json').create();
   if(await File(externalDir!.path +'/Save.json').exists() && await File(externalDir.path+"/Save.json").readAsString() != ""){
-    print(await File(externalDir.path+"/Save.json").readAsString());
     List<dynamic> itmList = jsonDecode(await File(externalDir.path+"/Save.json").readAsString());
-    print(":: " + itmList.toString());
-    // List readItems = jsonDecode(File(externalDir.path+"/Save.json").readAsStringSync());
     for(var itm in itmList){
       GamePlayedItem tmp  = GamePlayedItem.clear();
       Map<String, dynamic> readSave = Map<String, dynamic>.from(itm);
@@ -70,10 +67,11 @@ void main() async{
             break;
         }
       });
-      itms.add(tmp);
+      allItems.add(tmp);
     } 
-    print(itms.toString());
+    shownItems = allItems;
     fillUniqueLists();
+    print("all: " + allItems.toString());
   }
   else{
     await File(externalDir.path +'/Save.json').create();
@@ -96,6 +94,73 @@ class MyApp extends StatelessWidget {
   }
 }
 
+List<GamePlayedItem> _queryGame(String searched){
+  if(searched == '')return allItems;
+  List<GamePlayedItem> retList = List.empty(growable: true);
+  for(GamePlayedItem item in allItems){
+    bool match = true;
+    if(item.game.length < searched.length) continue;
+    for(int i=0;i<searched.length;i++){
+      if(item.game[i] != searched[i]) {
+        match = false;
+      }
+    }
+    if(match){
+      retList.add(item);
+    }
+  }
+  return retList;
+}
+
+List<GamePlayedItem> _filterItems(String filterPlayer, String filterGame){
+  if(filterPlayer == '' && filterGame == '') {
+    return allItems;
+  }
+  List<GamePlayedItem> tmp = List.empty(growable: true);
+  if(filterPlayer != ''){
+    for(int i=0;i<allItems.length;i++){
+      int maxIdx = 0;
+      for(int j=0;j<allItems[i].players.length;j++){
+        if(allItems[i].players[maxIdx].score < allItems[i].players[j].score) {
+          maxIdx = j;
+        }
+      }
+      if(allItems[i].players[maxIdx].name == filterPlayer){
+        if(filterGame != ''){
+          if(allItems[i].game == filterGame){
+            tmp.add(allItems[i]);
+          }
+        }
+        else {
+          tmp.add(allItems[i]);
+        }
+      }
+    } 
+  }
+  if(filterGame != ''){
+    for(GamePlayedItem item in allItems){
+      if(item.game == filterGame){
+        if(filterPlayer != ''){
+          int maxIdx = 0;
+          for(int i=0;i<item.players.length;i++){
+            if(item.players[maxIdx].score < item.players[i].score) {
+              maxIdx = i;
+            }
+          }
+          if(item.players[maxIdx].name == filterPlayer){
+            tmp.add(item);
+          }
+        }
+        else {
+          tmp.add(item);
+        }
+      }
+    }
+  }
+  tmp = tmp.toSet().toList();
+  return tmp;
+}
+
 class MyHomePage extends StatefulWidget {
   const MyHomePage({Key? key}) : super(key: key);
 
@@ -104,6 +169,8 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  TextEditingController tecSearch = TextEditingController(text: '');
+  String filterPlayer = '', filterGame = '';
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -115,17 +182,93 @@ class _MyHomePageState extends State<MyHomePage> {
           leading: Container(),
           title: const Text('Games'),
           actions: [
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: SizedBox(
+                width: 100, 
+                child: 
+                PopupMenuButton(itemBuilder: (context)=>[
+                  PopupMenuItem(
+                    child: StatefulBuilder(
+                      builder: (BuildContext context, void Function(void Function()) setInnerState) { 
+                        return 
+                          Row(
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.all(4.0),
+                                child: Text("Winner: "),
+                              ),
+                              DropdownButton<String>(
+                                alignment: AlignmentDirectional.center,
+                                value: filterPlayer,
+                                onChanged: (String? newValue) {
+                                  setInnerState(() {
+                                    filterPlayer = newValue!;
+                                  });
+                                  setState(() {
+                                    shownItems = _filterItems(filterPlayer, filterGame);                                    
+                                  });
+                                },
+                                items: players.map<DropdownMenuItem<String>>((String value) {
+                                  return DropdownMenuItem<String>(
+                                    alignment: AlignmentDirectional.center,
+                                    value: value,
+                                    child: Text(value),
+                                  );
+                                }).toList(),
+                              ),
+                              const Padding(
+                                padding: EdgeInsets.all(4.0),
+                                child: Text("Game: "),
+                              ),
+                              DropdownButton<String>(
+                                alignment: AlignmentDirectional.center,
+                                value: filterGame,
+                                onChanged: (String? newValue) {
+                                  setInnerState(() {
+                                    filterGame = newValue!;
+                                  });
+                                  setState(() {
+                                    shownItems = _filterItems(filterPlayer, filterGame);                                    
+                                  });
+                                },
+                                items: games.map<DropdownMenuItem<String>>((String value) {
+                                  return DropdownMenuItem<String>(
+                                    alignment: AlignmentDirectional.center,
+                                    value: value,
+                                    child: Text(value),
+                                  );
+                                }).toList(),
+                              ),
+                            ]
+                          );
+                      },
+                    ) ,
+                  ),
+              ]
+              )
+                  // TextField(
+                  //   decoration: const InputDecoration(hintText: 'Search a Game...'),
+                  //   controller: tecSearch,
+                  //   onChanged: (String search){
+                  //     setState(() {
+                  //       shownItems = _queryGame(search);
+                  //     });
+                  //   },
+                  // )
+              ),
+            ),
             ElevatedButton.icon(
               onPressed: (){
-                Navigator.of(context).push(MaterialPageRoute(builder: (context) => GamePlayedPageSend(idx: itms.length,)));
-            }, icon: Icon(Icons.add), label: const Text("Add"), style: ElevatedButton.styleFrom(primary: Colors.green))
+                Navigator.of(context).push(MaterialPageRoute(builder: (context) => GamePlayedPageSend(idx: allItems.length,)));
+            }, icon: const Icon(Icons.add), label: const Text("Add"), style: ElevatedButton.styleFrom(primary: Colors.deepPurple[400]))
           ],
         ),
         body: Scrollbar(
           isAlwaysShown: true,
           child: ListView.builder(
             scrollDirection: Axis.vertical,
-            itemCount: itms.length,
+            itemCount: shownItems.length,
             reverse: true,
             itemBuilder: ((BuildContext context, int index) {
               return Card(
@@ -136,12 +279,12 @@ class _MyHomePageState extends State<MyHomePage> {
                       children: [
                         const Icon(Icons.access_time_sharp),
                         const SizedBox(width: 10,),
-                        Text(DateFormat('dd/MMM/yy').format(itms[index].date)),
+                        Text(DateFormat('dd/MMM/yy').format(shownItems[index].date)),
                       ],
                     ),
                   ),
-                  title: Text(itms[index].game, textAlign: TextAlign.end,),
-                  subtitle: Text(itms[index].players.toString(), textAlign: TextAlign.end,),
+                  title: Text(shownItems[index].game, textAlign: TextAlign.end,),
+                  subtitle: Text(shownItems[index].players.toString(), textAlign: TextAlign.end,),
                   trailing: const Icon(Icons.games),
                   onTap: (){
                     Navigator.of(context).push(MaterialPageRoute(builder: (context)=> GamePlayedPageSend(idx: index,)));
@@ -160,7 +303,6 @@ class GamePlayedPageSend extends StatefulWidget{
   const GamePlayedPageSend({Key? key, @required this.idx}) : super(key: key);
   @override
   State<StatefulWidget> createState() {
-    print(idx);
     return GamePlayedPage(idx);
   }
 }
@@ -169,122 +311,152 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
   late List<Person> ppl; 
   late GamePlayedItem item;
   List<TextEditingController> tecScores = List.empty(growable: true);
+  AppBar appbar = AppBar();
   GamePlayedPage(this.idx);
    @override
   void initState() {
-    if(itms.length == idx){
+    if(allItems.length == idx){
       item = GamePlayedItem(games.first, List.empty(growable: true), DateTime.now());
     }
     else{
-      item = GamePlayedItem(itms[idx!].game, itms[idx!].players, itms[idx!].date);
+      item = GamePlayedItem(shownItems[idx!].game, shownItems[idx!].players, shownItems[idx!].date);
       for(int i=0;i<item.players.length;i++){
         tecScores.add(TextEditingController(text: item.players[i].score.toString()));
       }
     }
+    tecScores.add(TextEditingController(text: '0'));
     super.initState();
   }
   @override
   Widget build(BuildContext context) {
    return Scaffold(
-     appBar: AppBar(
+     appBar: appbar = AppBar(
        title: const FittedBox(child: Text('Add Game Played')),
        actions: [
-        ElevatedButton.icon(onPressed: (){
-          TextEditingController tecGame = TextEditingController();
-          showDialog(context: context, builder: (BuildContext context) {
-            return AlertDialog(
-              title: const Center(child: Text("Add a Game")),
-              content: 
-                TextField(
-                  controller: tecGame,
-                ),
-              actions: [
-                ElevatedButton(onPressed: (){
-                  Navigator.pop(context);
-                  setState(() {
-                    if(games.first == ''){
-                      games[0] = tecGame.text;
-                    }
-                    else{
-                      games.add(tecGame.text);
-                    }
-                    item.game = tecGame.text;
-                  });
-                }, child: const Text("Confirm"))
-              ],
-            );
-        });
-      }, icon: const Icon(Icons.add), label: const Text("Game")),
-      ElevatedButton.icon(onPressed: (){
-        TextEditingController tecPlayerName = TextEditingController();
-        TextEditingController tecPlayerScore = TextEditingController();
-        String previousSelectedName = players.first;
-        showDialog(context: context, builder: (BuildContext context) {
-          return StatefulBuilder(builder: (context, setInnerState) {
-            return SingleChildScrollView(
-            child: AlertDialog(
-              title: const Center(child: Text("Add a Player")),
-              content: 
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(
-                      width: 200,
-                      child: DropdownButton<String>(
-                        alignment: AlignmentDirectional.center,
-                        value: previousSelectedName,
-                        onChanged: (String? newValue) {
-                          setInnerState(() {
-                            tecPlayerName.clear();
-                            previousSelectedName = newValue!;
+         Column(
+           children: [
+              SizedBox(
+                height: appbar.preferredSize.height/2,
+                child: ElevatedButton.icon(onPressed: (){
+                  TextEditingController tecGame = TextEditingController();
+                  showDialog(context: context, builder: (BuildContext context) {
+                    return AlertDialog(
+                      title: const Center(child: Text("Add a Game")),
+                      content: 
+                        TextField(
+                          controller: tecGame,
+                        ),
+                      actions: [
+                        ElevatedButton(onPressed: (){
+                          Navigator.pop(context);
+                          setState(() {
+                            games.add(tecGame.text);
+                            item.game = tecGame.text;
                           });
-                        },
-                        items: players.map<DropdownMenuItem<String>>((String value) {
-                          return DropdownMenuItem<String>(
+                        }, child: const Text("Confirm"))
+                      ],
+                    );
+                  });
+          }, icon: const Icon(Icons.add), label: const Text("Game")),
+        ),
+        SizedBox(
+          height: appbar.preferredSize.height/2,
+          child: 
+          ElevatedButton.icon(onPressed: (){
+            TextEditingController tecPlayerName = TextEditingController();
+            TextEditingController tecPlayerScore = TextEditingController();
+            String previousSelectedName = players.first;
+            showDialog(context: context, builder: (BuildContext context) {
+              return StatefulBuilder(builder: (context, setInnerState) {
+                return SingleChildScrollView(
+                child: AlertDialog(
+                  title: const Center(child: Text("Add a Player")),
+                  content: 
+                    Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 200,
+                          child: DropdownButton<String>(
                             alignment: AlignmentDirectional.center,
-                            value: value,
-                            child: Text(value),
-                          );
-                        }).toList(),
-                      ),
+                            value: previousSelectedName,
+                            onChanged: (String? newValue) {
+                              setInnerState(() {
+                                tecPlayerName.clear();
+                                previousSelectedName = newValue!;
+                              });
+                            },
+                            items: players.map<DropdownMenuItem<String>>((String value) {
+                              return DropdownMenuItem<String>(
+                                alignment: AlignmentDirectional.center,
+                                value: value,
+                                child: Text(value),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: Text("OR"),
+                        ),
+                        TextField(decoration: InputDecoration(labelText: 'Name', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),  controller: tecPlayerName,
+                          onTap: (){
+                            setState(() {
+                              previousSelectedName = "";  
+                            });
+                          },
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: TextField(decoration: InputDecoration(labelText: 'Score', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),  controller: tecPlayerScore, keyboardType: TextInputType.number,),
+                        ),
+                      ],
                     ),
-                    const Text("OR"),
-                    TextField(decoration: InputDecoration(labelText: 'Name', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),  controller: tecPlayerName,
-                      onTap: (){
-                        setState(() {
-                          previousSelectedName = "";  
-                        });
-                      },
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: TextField(decoration: InputDecoration(labelText: 'Score', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),  controller: tecPlayerScore, keyboardType: TextInputType.number,),
-                    ),
+                  actions: [
+                    ElevatedButton(onPressed: (){
+                      Navigator.pop(context);
+                      if(previousSelectedName == '' && tecPlayerName.text == '')return;
+                      int score = tecPlayerScore.text==''?0:int.parse(tecPlayerScore.text);
+                      Person? p;
+                      if(previousSelectedName == ''){
+                        p = Person(tecPlayerName.text, score);
+                      }
+                      else{
+                        p = Person(previousSelectedName, score);
+                      }
+                      setState(() {
+                        item.players.add(p!);
+                        tecScores.elementAt(tecScores.length - 1).text = score.toString();
+                        tecScores.add(TextEditingController(text: '0'));
+                      });
+                    }, child: const Text("Confirm"))
                   ],
                 ),
-              actions: [
-                ElevatedButton(onPressed: (){
-                  Navigator.pop(context);
-                  if(previousSelectedName == '' && tecPlayerName.text == '')return;
-                  int score = tecPlayerScore.text==''?0:int.parse(tecPlayerScore.text);
-                  Person? p;
-                  if(previousSelectedName == ''){
-                    p = Person(tecPlayerName.text, score);
+              );
+            });
+            });
+            }, icon: const Icon(Icons.add), label: const Text("Player")),
+          ),
+        ],
+        ),
+        PopupMenuButton(
+          itemBuilder: (context)=>
+            [
+              PopupMenuItem(
+                onTap: () async{
+                  List<GamePlayedItem> deletedList = List.empty(growable: true);
+                  for(int i=0;i<allItems.length;i++){
+                    if(i != _findIdxRelativeToAll(idx!)) {
+                      deletedList.add(allItems[i]);
+                    }
                   }
-                  else{
-                    p = Person(previousSelectedName, score);
-                  }
-                  setState(() {
-                    item.players.add(p!);
-                    tecScores.add(TextEditingController(text: score.toString()));
-                  });
-                }, child: const Text("Confirm"))
-              ],
-            ),
-          );
-        });
-        });
-        }, icon: const Icon(Icons.add), label: const Text("Player")),
+                  allItems = deletedList;
+                  _saveAll(context);
+                },
+                child: Row(children: const [Icon(Icons.delete), Text('Delete')]) ,
+              ),
+            ]
+          )
       ],
      ),
      body: SingleChildScrollView(
@@ -317,27 +489,31 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                  ),
                ],
              ),
-             SizedBox(
-               height: 300,
-               child: ListView.builder(
-                itemCount: item.players.length,
-                itemBuilder: ((BuildContext context, int index) {
-                  return ListTile(
-                    leading: Text(item.players[index].name),
-                    trailing: SizedBox(
-                      width: 100,
-                      child: TextField(
-                        keyboardType: TextInputType.number,
-                        controller: tecScores[index],
-                        onChanged: (String n){
-                          if(n != '')
-                            item.players[index].score = int.parse(n);
-                        },
+             Card(
+               child: SizedBox(
+                 width: MediaQuery.of(context).size.width/2,
+                 height: MediaQuery.of(context).size.height/2,
+                 child: ListView.builder(
+                  itemCount: item.players.length,
+                  itemBuilder: ((BuildContext context, int index) {
+                    return ListTile(
+                      leading: Text(item.players[index].name),
+                      trailing: SizedBox(
+                        width: 50,
+                        child: TextField(
+                          textAlign: TextAlign.center,
+                          keyboardType: TextInputType.number,
+                          controller: tecScores[index],
+                          onChanged: (String n){
+                            if(n != '')
+                              item.players[index].score = int.parse(n);
+                          },
+                        ),
                       ),
-                    ),
-                  );
-                }),
-              ),
+                    );
+                  }),
+                ),
+               ),
              ),
             ElevatedButton.icon(onPressed: () async{
               if(item.game == '' || item.players.isEmpty){
@@ -345,17 +521,22 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                 return;
               }
               setState(() {
-                if(idx == itms.length) {
-                  itms.add(item);
+                if(idx == allItems.length) {
+                  allItems.add(item);
                 } 
                 else {
-                  itms[idx!] = item;
+                  allItems[idx!] = item;
+                  idx = _findIdxRelativeToAll(idx!);
                 }
+                print(idx);
                 fillUniqueLists();
               });
-              final externalDir = await getExternalStorageDirectory();
-              await File(externalDir!.path + "/Save.json").writeAsString(jsonEncode(itms));
-              Navigator.of(context).push(MaterialPageRoute(builder: (context)=>const MyHomePage()));
+              _saveAll(context);
+              // final externalDir = await getExternalStorageDirectory();
+              // await File(externalDir!.path + "/Save.json").writeAsString(jsonEncode(allItems));
+              // shownItems = _queryGame('');
+              // Navigator.of(context).push(MaterialPageRoute(builder: (context)=>const MyHomePage()));
+              // ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved.', textAlign: TextAlign.center))); 
             }, icon: const Icon(Icons.save), label: const Text('Save'))
            ],
          ),
@@ -363,4 +544,18 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
      ),
    ); 
   }
+}
+void _saveAll(BuildContext context)async{
+  final externalDir = await getExternalStorageDirectory();
+  await File(externalDir!.path + "/Save.json").writeAsString(jsonEncode(allItems));
+  shownItems = _queryGame('');
+  Navigator.of(context).push(MaterialPageRoute(builder: (context)=>const MyHomePage()));
+}
+int _findIdxRelativeToAll(int shownIdx){
+  for(int i=0;i<allItems.length;i++){
+    if(allItems[i] == shownItems[shownIdx]){
+      return i;
+    }
+  }
+  return allItems.length;
 }
