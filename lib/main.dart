@@ -116,7 +116,7 @@ List<GamePlayedItem> _filterItems(String filterPlayer, String filterGame){
   if(filterPlayer == '' && filterGame == '') {
     return allItems;
   }
-  List<GamePlayedItem> tmp = List.empty(growable: true);
+  List<GamePlayedItem> retItms = List.empty(growable: true);
   if(filterPlayer != ''){
     for(int i=0;i<allItems.length;i++){
       int maxIdx = 0;
@@ -126,39 +126,21 @@ List<GamePlayedItem> _filterItems(String filterPlayer, String filterGame){
         }
       }
       if(allItems[i].players[maxIdx].name == filterPlayer){
-        if(filterGame != ''){
-          if(allItems[i].game == filterGame){
-            tmp.add(allItems[i]);
-          }
-        }
-        else {
-          tmp.add(allItems[i]);
-        }
+        retItms.add(allItems[i]);
       }
     } 
   }
   if(filterGame != ''){
-    for(GamePlayedItem item in allItems){
+    List<GamePlayedItem> tmp = List.empty(growable: true);
+    for(GamePlayedItem item in (filterPlayer != ''?retItms:allItems)){
       if(item.game == filterGame){
-        if(filterPlayer != ''){
-          int maxIdx = 0;
-          for(int i=0;i<item.players.length;i++){
-            if(item.players[maxIdx].score < item.players[i].score) {
-              maxIdx = i;
-            }
-          }
-          if(item.players[maxIdx].name == filterPlayer){
-            tmp.add(item);
-          }
-        }
-        else {
-          tmp.add(item);
-        }
+        tmp.add(item);
       }
     }
+    retItms = tmp;
   }
-  tmp = tmp.toSet().toList();
-  return tmp;
+  retItms = retItms.toSet().toList();
+  return retItms;
 }
 
 class MyHomePage extends StatefulWidget {
@@ -187,11 +169,16 @@ class _MyHomePageState extends State<MyHomePage> {
               child: SizedBox(
                 width: 100, 
                 child: 
-                PopupMenuButton(itemBuilder: (context)=>[
+                PopupMenuButton(icon: const Icon(Icons.manage_search_rounded), itemBuilder: (context)=>[
                   PopupMenuItem(
                     child: StatefulBuilder(
                       builder: (BuildContext context, void Function(void Function()) setInnerState) { 
                         return 
+                        Column(children: [
+                          const Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: Text("Filter by:"),
+                          ),
                           Row(
                             children: [
                               const Padding(
@@ -241,7 +228,8 @@ class _MyHomePageState extends State<MyHomePage> {
                                 }).toList(),
                               ),
                             ]
-                          );
+                          )
+                        ]);
                       },
                     ) ,
                   ),
@@ -274,12 +262,12 @@ class _MyHomePageState extends State<MyHomePage> {
               return Card(
                 child: ListTile(
                   leading: SizedBox(
-                    width: MediaQuery.of(context).size.width / 3,
+                    width: MediaQuery.of(context).size.width / 2,
                     child: Row(
                       children: [
                         const Icon(Icons.access_time_sharp),
                         const SizedBox(width: 10,),
-                        Text(DateFormat('dd/MMM/yy').format(shownItems[index].date)),
+                        Text(DateFormat('dd/MMM/yy hh:mm').format(shownItems[index].date)),
                       ],
                     ),
                   ),
@@ -505,7 +493,7 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                           keyboardType: TextInputType.number,
                           controller: tecScores[index],
                           onChanged: (String n){
-                            if(n != '')
+                            if(n != '' && n != ' ')
                               item.players[index].score = int.parse(n);
                           },
                         ),
@@ -521,12 +509,13 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                 return;
               }
               setState(() {
+                print(idx.toString()+" == " + allItems.length.toString());
                 if(idx == allItems.length) {
                   allItems.add(item);
                 } 
                 else {
-                  allItems[idx!] = item;
                   idx = _findIdxRelativeToAll(idx!);
+                  allItems[idx!] = item;
                 }
                 print(idx);
                 fillUniqueLists();
