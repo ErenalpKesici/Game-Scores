@@ -1,11 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:game_scores/person.dart';
 import 'package:path_provider/path_provider.dart';
 import 'game_played_item.dart';
+import 'package:auto_size_text/auto_size_text.dart';
 import 'package:intl/intl.dart';
 
 List<GamePlayedItem> allItems = List.empty(growable: true);
@@ -71,7 +71,6 @@ void main() async{
     } 
     shownItems = allItems;
     fillUniqueLists();
-    print("all: " + allItems.toString());
   }
   else{
     await File(externalDir.path +'/Save.json').create();
@@ -84,6 +83,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'Flutter Demo',
       theme:ThemeData(brightness: SchedulerBinding.instance!.window.platformBrightness, primarySwatch: Colors.deepPurple,
         appBarTheme: const AppBarTheme(
@@ -153,6 +153,7 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   TextEditingController tecSearch = TextEditingController(text: '');
   String filterPlayer = '', filterGame = '';
+  List<bool> selectedTile = List.filled(shownItems.length, false);
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -162,7 +163,7 @@ class _MyHomePageState extends State<MyHomePage> {
       child: Scaffold(
         appBar: AppBar(
           leading: Container(),
-          title: const Text('Games'),
+          title: AutoSizeText('Games (' + shownItems.length.toString() +')', maxLines: 1,),
           actions: [
             Padding(
               padding: const EdgeInsets.all(8.0),
@@ -171,6 +172,13 @@ class _MyHomePageState extends State<MyHomePage> {
                 child: 
                 PopupMenuButton(icon: const Icon(Icons.manage_search_rounded), itemBuilder: (context)=>[
                   PopupMenuItem(
+                    onTap: (){
+                      setState(() {
+                        filterGame='';
+                        filterPlayer='';
+                        shownItems = _filterItems(filterPlayer, filterGame);   
+                      });
+                    },
                     child: StatefulBuilder(
                       builder: (BuildContext context, void Function(void Function()) setInnerState) { 
                         return 
@@ -235,21 +243,26 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
               ]
               )
-                  // TextField(
-                  //   decoration: const InputDecoration(hintText: 'Search a Game...'),
-                  //   controller: tecSearch,
-                  //   onChanged: (String search){
-                  //     setState(() {
-                  //       shownItems = _queryGame(search);
-                  //     });
-                  //   },
-                  // )
               ),
             ),
-            ElevatedButton.icon(
+            if(selectedTile.contains(true) && !selectedTile.every((element) => element))
+              IconButton(
+                onPressed: (){
+                  setState(() {
+                    selectedTile = List.filled(shownItems.length, true);
+                  });
+              }, icon: const Icon(Icons.select_all)),
+            if(selectedTile.isNotEmpty && selectedTile.every((element) => element))
+            IconButton(
+              onPressed: (){
+                setState(() {
+                  selectedTile = List.filled(shownItems.length, false);
+                });
+            }, icon: const Icon(Icons.cancel)),
+            IconButton(
               onPressed: (){
                 Navigator.of(context).push(MaterialPageRoute(builder: (context) => GamePlayedPageSend(idx: allItems.length,)));
-            }, icon: const Icon(Icons.add), label: const Text("Add"), style: ElevatedButton.styleFrom(primary: Colors.deepPurple[400]))
+            }, icon: const Icon(Icons.add))
           ],
         ),
         body: Scrollbar(
@@ -257,26 +270,85 @@ class _MyHomePageState extends State<MyHomePage> {
           child: ListView.builder(
             scrollDirection: Axis.vertical,
             itemCount: shownItems.length,
-            reverse: true,
             itemBuilder: ((BuildContext context, int index) {
-              return Card(
-                child: ListTile(
-                  leading: SizedBox(
-                    width: MediaQuery.of(context).size.width / 2,
-                    child: Row(
-                      children: [
-                        const Icon(Icons.access_time_sharp),
-                        const SizedBox(width: 10,),
-                        Text(DateFormat('dd/MMM/yy hh:mm').format(shownItems[index].date)),
-                      ],
+              return Dismissible(
+                direction: DismissDirection.startToEnd,
+                confirmDismiss: (DismissDirection direction) async {
+                  return await showDialog(
+                    context: context,
+                    builder: (BuildContext context) {
+                      return AlertDialog(
+                        title: const Text("Confirm"),
+                        content: const Text("Are you sure you wish to delete this item?"),
+                        actions: <Widget>[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              ElevatedButton(
+                                onPressed: () => Navigator.of(context).pop(false),
+                                child: const Text("No"),
+                              ),
+                              const SizedBox(width: 5,),
+                              ElevatedButton(
+                                onPressed: () => Navigator.of(context).pop(true),
+                                child: const Text("Yes")
+                              ),
+                            ],
+                          )
+                        ],
+                      );
+                    },
+                  );
+                },
+                key: UniqueKey(),
+                background: Container(
+                  color: Colors.red,
+                  child: const Icon(Icons.delete),
+                ),
+                onDismissed: (DismissDirection direction){
+                  setState(() {
+                    shownItems.removeAt(index);
+                    _saveAll(context);
+                  });
+                },
+                child: Card(
+                  child: ListTile(
+                    onLongPress: (){
+                      setState(() {
+                        selectedTile = List.filled(shownItems.length, false);
+                        selectedTile[index] = true;
+                      });
+                    },
+                    selected: selectedTile[index],
+                    leading: SizedBox(
+                      width: MediaQuery.of(context).size.width / 2,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.access_time_sharp),
+                          const SizedBox(width: 10,),
+                          Text(DateFormat('dd/MMM/yy hh:mm').format(shownItems[index].date)),
+                        ],
+                      ),
                     ),
+                    title: Text(shownItems[index].game, textAlign: TextAlign.end,),
+                    subtitle: Text(shownItems[index].players.toString(), textAlign: TextAlign.end,),
+                    trailing: const Icon(Icons.games),
+                    onTap: (){
+                      if(selectedTile.contains(true)){
+                        setState(() {
+                          if(selectedTile[index]) {
+                            selectedTile[index] = false;
+                          }
+                          else {
+                            selectedTile[index] = true;
+                          }
+                        });
+                      }
+                      else {
+                        Navigator.of(context).push(MaterialPageRoute(builder: (context)=> GamePlayedPageSend(idx: index,)));
+                      }
+                    },
                   ),
-                  title: Text(shownItems[index].game, textAlign: TextAlign.end,),
-                  subtitle: Text(shownItems[index].players.toString(), textAlign: TextAlign.end,),
-                  trailing: const Icon(Icons.games),
-                  onTap: (){
-                    Navigator.of(context).push(MaterialPageRoute(builder: (context)=> GamePlayedPageSend(idx: index,)));
-                  },
                 ),
               );
             }),
@@ -301,7 +373,7 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
   List<TextEditingController> tecScores = List.empty(growable: true);
   AppBar appbar = AppBar();
   GamePlayedPage(this.idx);
-   @override
+  @override
   void initState() {
     if(allItems.length == idx){
       item = GamePlayedItem(games.first, List.empty(growable: true), DateTime.now());
@@ -509,23 +581,21 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                 return;
               }
               setState(() {
-                print(idx.toString()+" == " + allItems.length.toString());
                 if(idx == allItems.length) {
-                  allItems.add(item);
+                  allItems.insert(0, item);
                 } 
                 else {
                   idx = _findIdxRelativeToAll(idx!);
                   allItems[idx!] = item;
                 }
-                print(idx);
                 fillUniqueLists();
               });
               _saveAll(context);
-              // final externalDir = await getExternalStorageDirectory();
-              // await File(externalDir!.path + "/Save.json").writeAsString(jsonEncode(allItems));
-              // shownItems = _queryGame('');
-              // Navigator.of(context).push(MaterialPageRoute(builder: (context)=>const MyHomePage()));
-              // ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved.', textAlign: TextAlign.center))); 
+              final externalDir = await getExternalStorageDirectory();
+              await File(externalDir!.path + "/Save.json").writeAsString(jsonEncode(allItems));
+              shownItems = _queryGame('');
+              Navigator.of(context).push(MaterialPageRoute(builder: (context)=>const MyHomePage()));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved.', textAlign: TextAlign.center))); 
             }, icon: const Icon(Icons.save), label: const Text('Save'))
            ],
          ),
