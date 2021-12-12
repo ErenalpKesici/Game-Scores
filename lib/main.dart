@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:game_scores/person.dart';
+import 'package:game_scores/stats.dart';
 import 'package:path_provider/path_provider.dart';
 import 'game_played_item.dart';
 import 'package:auto_size_text/auto_size_text.dart';
@@ -64,6 +65,9 @@ void main() async{
             break;
           case("date"):
             tmp.date=DateTime.parse(value);
+            break;
+          case("winnerIdx"):
+            tmp.winnerIdx=int.parse(value);
             break;
         }
       });
@@ -161,8 +165,43 @@ class _MyHomePageState extends State<MyHomePage> {
         return false;
       },
       child: Scaffold(
+        drawer:  Drawer(
+    child: Container(
+      child: ListView(
+        children: [
+          DrawerHeader(
+            child: Container(height: 100,)
+          ),
+          ListTile(
+            leading: const Icon(Icons.home),
+            title: Text("Ana Sayfa", textAlign: TextAlign.center,),
+            onTap: (){
+              if(context.widget.toString() != "MyHomePage"){
+                Navigator.of(context).pop();
+                Navigator.of(context).push(MaterialPageRoute(builder: (context) =>MyHomePage()));
+              }
+              else
+                Navigator.of(context).pop();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.query_stats),
+            title: const Text("Stats", textAlign: TextAlign.center,),
+            onTap: (){
+              if(context.widget.toString() != "StatsPageSend"){
+                Navigator.of(context).pop();
+                Navigator.of(context).push(MaterialPageRoute(builder: (context) =>StatsPageSend()));
+              }
+              else {
+                Navigator.of(context).pop();
+              }
+            },
+          ),       
+        ],
+      ),
+    ),
+  ),
         appBar: AppBar(
-          leading: Container(),
           title: AutoSizeText('Games (' + shownItems.length.toString() +')', maxLines: 1,),
           actions: [
             Padding(
@@ -252,13 +291,28 @@ class _MyHomePageState extends State<MyHomePage> {
                     selectedTile = List.filled(shownItems.length, true);
                   });
               }, icon: const Icon(Icons.select_all)),
+            if(selectedTile.contains(true))
+              IconButton(
+                onPressed: (){
+                  List<GamePlayedItem> newAllItems = List.empty(growable: true);
+                  for(int i=0;i<allItems.length;i++){
+                    if(!selectedTile[i]){
+                      newAllItems.add(allItems[_findIdxRelativeToAll(i)]);
+                    }
+                  }
+                  setState(() {
+                    allItems=newAllItems;
+                    shownItems = allItems;
+                  });
+                  _saveAll(context);
+                }, icon: const Icon(Icons.delete)),
             if(selectedTile.isNotEmpty && selectedTile.every((element) => element))
-            IconButton(
-              onPressed: (){
-                setState(() {
-                  selectedTile = List.filled(shownItems.length, false);
-                });
-            }, icon: const Icon(Icons.cancel)),
+              IconButton(
+                onPressed: (){
+                  setState(() {
+                    selectedTile = List.filled(shownItems.length, false);
+                  });
+              }, icon: const Icon(Icons.cancel)),
             IconButton(
               onPressed: (){
                 Navigator.of(context).push(MaterialPageRoute(builder: (context) => GamePlayedPageSend(idx: allItems.length,)));
@@ -376,10 +430,10 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
   @override
   void initState() {
     if(allItems.length == idx){
-      item = GamePlayedItem(games.first, List.empty(growable: true), DateTime.now());
+      item = GamePlayedItem(games.first, List.empty(growable: true), DateTime.now(), 0);
     }
     else{
-      item = GamePlayedItem(shownItems[idx!].game, shownItems[idx!].players, shownItems[idx!].date);
+      item = GamePlayedItem(shownItems[idx!].game, shownItems[idx!].players, shownItems[idx!].date, 0);
       for(int i=0;i<item.players.length;i++){
         tecScores.add(TextEditingController(text: item.players[i].score.toString()));
       }
@@ -499,24 +553,25 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
           ),
         ],
         ),
-        PopupMenuButton(
-          itemBuilder: (context)=>
-            [
-              PopupMenuItem(
-                onTap: () async{
-                  List<GamePlayedItem> deletedList = List.empty(growable: true);
-                  for(int i=0;i<allItems.length;i++){
-                    if(i != _findIdxRelativeToAll(idx!)) {
-                      deletedList.add(allItems[i]);
+        if(idx! < shownItems.length)
+          PopupMenuButton(
+            itemBuilder: (context)=>
+              [
+                PopupMenuItem(
+                  onTap: () async{
+                    List<GamePlayedItem> deletedList = List.empty(growable: true);
+                    for(int i=0;i<allItems.length;i++){
+                      if(i != _findIdxRelativeToAll(idx!)) {
+                        deletedList.add(allItems[i]);
+                      }
                     }
-                  }
-                  allItems = deletedList;
-                  _saveAll(context);
-                },
-                child: Row(children: const [Icon(Icons.delete), Text('Delete')]) ,
-              ),
-            ]
-          )
+                    allItems = deletedList;
+                    _saveAll(context);
+                  },
+                  child: Row(children: const [Icon(Icons.delete), Text('Delete')]) ,
+                ),
+              ]
+            )
       ],
      ),
      body: SingleChildScrollView(
@@ -565,8 +620,15 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                           keyboardType: TextInputType.number,
                           controller: tecScores[index],
                           onChanged: (String n){
-                            if(n != '' && n != ' ')
+                            if(n != '' && n != ' ') {
+                              if(n[0] == '0') {
+                                n = n.substring(1, n.length);
+                                setState(() {
+                                  tecScores[index] = TextEditingController(text: n);
+                                });
+                              }
                               item.players[index].score = int.parse(n);
+                            }
                           },
                         ),
                       ),
@@ -580,6 +642,13 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Make sure to select a game and atleast one player.', textAlign: TextAlign.center))); 
                 return;
               }
+              int maxIdx = 0;
+              for(int i=0;i<item.players.length;i++){
+                if(maxIdx < item.players[i].score){
+                  maxIdx = i;
+                }
+              }
+              item.winnerIdx = maxIdx;
               setState(() {
                 if(idx == allItems.length) {
                   allItems.insert(0, item);
@@ -591,10 +660,6 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                 fillUniqueLists();
               });
               _saveAll(context);
-              final externalDir = await getExternalStorageDirectory();
-              await File(externalDir!.path + "/Save.json").writeAsString(jsonEncode(allItems));
-              shownItems = _queryGame('');
-              Navigator.of(context).push(MaterialPageRoute(builder: (context)=>const MyHomePage()));
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved.', textAlign: TextAlign.center))); 
             }, icon: const Icon(Icons.save), label: const Text('Save'))
            ],
