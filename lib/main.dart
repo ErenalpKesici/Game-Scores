@@ -82,6 +82,22 @@ void main() async{
   runApp(const MyApp());
 }
 
+PageRouteBuilder _transition(var page){
+  return PageRouteBuilder(
+    pageBuilder: (context, animation, secondaryAnimation) => page,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      const begin = Offset(1.0, 1.0);
+      const end = Offset.zero;
+      const curve = Curves.ease;
+      var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+      return SlideTransition(
+        position: animation.drive(tween),
+        child: child,
+      );
+    },
+  );
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({Key? key}) : super(key: key);
   @override
@@ -399,7 +415,8 @@ class _MyHomePageState extends State<MyHomePage> {
                         });
                       }
                       else {
-                        Navigator.of(context).push(MaterialPageRoute(builder: (context)=> GamePlayedPageSend(idx: index,)));
+                        
+                        Navigator.of(context).push(_transition(GamePlayedPageSend(idx: index,)));
                       }
                     },
                   ),
