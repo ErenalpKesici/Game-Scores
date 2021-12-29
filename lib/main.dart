@@ -4,10 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:game_scores/person.dart';
 import 'package:game_scores/stats.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:path_provider_windows/path_provider_windows.dart';
 import 'game_played_item.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:intl/intl.dart';
+final PathProviderWindows provider = PathProviderWindows();
 
 List<GamePlayedItem> allItems = List.empty(growable: true);
 List<GamePlayedItem> shownItems = List.empty(growable: true);
@@ -43,11 +44,11 @@ void fillUniqueLists(){
 }
 void main() async{
   WidgetsFlutterBinding.ensureInitialized();
-  final externalDir = await getExternalStorageDirectory();
+  final externalDir = await provider.getApplicationSupportPath();
   // await File(externalDir!.path +'/Save.json').delete();
   // await File(externalDir!.path +'/Save.json').create();
-  if(await File(externalDir!.path +'/Save.json').exists() && await File(externalDir.path+"/Save.json").readAsString() != ""){
-    List<dynamic> itmList = jsonDecode(await File(externalDir.path+"/Save.json").readAsString());
+  if(await File(externalDir! +'/Save.json').exists() && await File(externalDir+"/Save.json").readAsString() != ""){
+    List<dynamic> itmList = jsonDecode(await File(externalDir+"/Save.json").readAsString());
     for(var itm in itmList){
       GamePlayedItem tmp  = GamePlayedItem.clear();
       Map<String, dynamic> readSave = Map<String, dynamic>.from(itm);
@@ -77,7 +78,7 @@ void main() async{
     fillUniqueLists();
   }
   else{
-    await File(externalDir.path +'/Save.json').create();
+    await File(externalDir+'/Save.json').create();
   }
   runApp(const MyApp());
 }
@@ -687,8 +688,8 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
   }
 }
 void _saveAll(BuildContext context)async{
-  final externalDir = await getExternalStorageDirectory();
-  await File(externalDir!.path + "/Save.json").writeAsString(jsonEncode(allItems));
+  final externalDir = await provider.getApplicationSupportPath();
+  await File(externalDir! + "/Save.json").writeAsString(jsonEncode(allItems));
   shownItems = _queryGame('');
   Navigator.of(context).push(MaterialPageRoute(builder: (context)=>const MyHomePage()));
 }
