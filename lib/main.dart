@@ -9,7 +9,7 @@ import 'game_played_item.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:intl/intl.dart';
 final PathProviderWindows provider = PathProviderWindows();
-//WINDOWSS
+
 List<GamePlayedItem> allItems = List.empty(growable: true);
 List<GamePlayedItem> shownItems = List.empty(growable: true);
 List<String> games = List.filled(1, '', growable: true);
