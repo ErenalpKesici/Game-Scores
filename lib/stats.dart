@@ -31,6 +31,7 @@ class StatsPage extends State<StatsPageSend>{
                   for(int i=0;i<allItems.length;i++){
                     if(allItems[i].players[allItems[i].winnerIdx].name == selectedPlayer){
                       selectedWins++;
+                      print(allItems[i].players[allItems[i].winnerIdx].name +"=="+ selectedPlayer.toString());
                     }
                   }
                 });

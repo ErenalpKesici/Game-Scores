@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "851000589842",
+    "project_id": "game-scores-972ef",
+    "storage_bucket": "game-scores-972ef.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:851000589842:android:4d8ad5afd2a746e7b862cb",
+        "android_client_info": {
+          "package_name": "com.example.game_scores"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "851000589842-au3347d19rokagj4pu684pi25ao5eev5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBnLXJH5a6Nas8AzUqWGWeYCo2L54gKTT8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "851000589842-au3347d19rokagj4pu684pi25ao5eev5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

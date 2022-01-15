@@ -1,14 +1,24 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:game_scores/AuthenticationServices.dart';
+import 'package:game_scores/backup_restore.dart';
+import 'package:game_scores/initial.dart';
 import 'package:game_scores/person.dart';
+import 'package:game_scores/settings.dart';
 import 'package:game_scores/stats.dart';
+import 'package:game_scores/user.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
 import 'game_played_item.dart';
 import 'package:auto_size_text/auto_size_text.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-
+import 'package:http/http.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:provider/src/provider.dart';
 List<GamePlayedItem> allItems = List.empty(growable: true);
 List<GamePlayedItem> shownItems = List.empty(growable: true);
 List<String> games = List.filled(1, '', growable: true);
@@ -41,12 +51,39 @@ void fillUniqueLists(){
     }
   }
 }
-void main() async{
-  WidgetsFlutterBinding.ensureInitialized();
+Future<Users> findUser(email) async{
+  DocumentReference doc = FirebaseFirestore.instance.collection("Users").doc(email);
+  var document = await doc.get();
+  Users ret = Users(email: document.get('email'), password: document.get('password'), name: document.get('name')); 
+  return ret;
+}
+class AuthenticationWrapper extends StatelessWidget {
+  const AuthenticationWrapper({Key? key}) : super(key: key);
+  @override
+  Widget build(BuildContext context){
+    final firebaseUser = context.watch<User?>();
+    if(firebaseUser != null) {
+      return FutureBuilder(
+        future: findUser(firebaseUser.email),
+        builder: (BuildContext context, AsyncSnapshot<dynamic> snapshot) {
+          if(snapshot.hasData)
+            return BackupRestorePageSend(user: snapshot.data);
+          else 
+            return Center(child: CircularProgressIndicator());
+        },
+    );
+    }
+    return InitialPageSend();
+  }
+}
+Future<void> readSave()async{
+  allItems = List.empty(growable: true);
+  shownItems = List.empty(growable: true);
   final externalDir = await getExternalStorageDirectory();
-  // await File(externalDir!.path +'/Save.json').delete();
-  // await File(externalDir!.path +'/Save.json').create();
+  //  await File(externalDir!.path +'/Save.json').delete();
+  //  await File(externalDir!.path +'/Save.json').create();
   if(await File(externalDir!.path +'/Save.json').exists() && await File(externalDir.path+"/Save.json").readAsString() != ""){
+    print(await File(externalDir.path+"/Save.json").readAsString());
     List<dynamic> itmList = jsonDecode(await File(externalDir.path+"/Save.json").readAsString());
     for(var itm in itmList){
       GamePlayedItem tmp  = GamePlayedItem.clear();
@@ -79,9 +116,13 @@ void main() async{
   else{
     await File(externalDir.path +'/Save.json').create();
   }
+}
+void main() async{
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  await readSave();
   runApp(const MyApp());
 }
-
 PageRouteBuilder _transition(var page){
   return PageRouteBuilder(
     pageBuilder: (context, animation, secondaryAnimation) => page,
@@ -100,16 +141,29 @@ PageRouteBuilder _transition(var page){
 
 class MyApp extends StatelessWidget {
   const MyApp({Key? key}) : super(key: key);
-  @override
+@override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Flutter Demo',
-      theme:ThemeData(brightness: SchedulerBinding.instance!.window.platformBrightness, primarySwatch: Colors.deepPurple,
+    return MultiProvider(
+      providers: [
+        Provider<AuthenticationServices>(
+          create: (_) => AuthenticationServices(FirebaseAuth.instance),
+        ),
+        StreamProvider(
+          create: (context) => context.read<AuthenticationServices>().authStateChanges, initialData: null,
+        )
+      ],
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title:  'Get Started',
+        theme: ThemeData(
+          brightness: SchedulerBinding.instance!.window.platformBrightness,
         appBarTheme: const AppBarTheme(
           foregroundColor: Colors.white,
-          backgroundColor: Colors.deepPurple)),
-      home: const MyHomePage(),
+          backgroundColor: Colors.deepPurple),
+          primarySwatch: Colors.deepPurple,
+        ),
+        home: MyHomePage()
+      ),
     );
   }
 }
@@ -174,6 +228,7 @@ class _MyHomePageState extends State<MyHomePage> {
   TextEditingController tecSearch = TextEditingController(text: '');
   String filterPlayer = '', filterGame = '';
   List<bool> selectedTile = List.filled(shownItems.length, false);
+  _MyHomePageState();
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -182,41 +237,54 @@ class _MyHomePageState extends State<MyHomePage> {
       },
       child: Scaffold(
         drawer:  Drawer(
-    child: Container(
-      child: ListView(
-        children: [
-          DrawerHeader(
-            child: Container(height: 100,)
+          child: ListView(
+            children: [
+              const DrawerHeader(
+                child: Image(image: AssetImage('assets/logo.png'),
+                fit: BoxFit.fitHeight,
+              )
+            ),
+              ListTile(
+                leading: const Icon(Icons.home),
+                title: const Text("Ana Sayfa", textAlign: TextAlign.center,),
+                onTap: (){
+                  if(context.widget.toString() != "MyHomePage"){
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(MaterialPageRoute(builder: (context) =>MyHomePage()));
+                  }
+                  else
+                    Navigator.of(context).pop();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.query_stats),
+                title: const Text("Stats", textAlign: TextAlign.center,),
+                onTap: (){
+                  if(context.widget.toString() != "StatsPageSend"){
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(MaterialPageRoute(builder: (context) =>StatsPageSend()));
+                  }
+                  else {
+                    Navigator.of(context).pop();
+                  }
+                },
+              ),       
+              ListTile(
+                leading: const Icon(Icons.settings),
+                title: const Text("Settings", textAlign: TextAlign.center,),
+                onTap: (){
+                  if(context.widget.toString() != "SettingsPageSend"){
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(MaterialPageRoute(builder: (context) =>SettingsPageSend()));
+                  }
+                  else {
+                    Navigator.of(context).pop();
+                  }
+                },
+              ),      
+            ],
           ),
-          ListTile(
-            leading: const Icon(Icons.home),
-            title: Text("Ana Sayfa", textAlign: TextAlign.center,),
-            onTap: (){
-              if(context.widget.toString() != "MyHomePage"){
-                Navigator.of(context).pop();
-                Navigator.of(context).push(MaterialPageRoute(builder: (context) =>MyHomePage()));
-              }
-              else
-                Navigator.of(context).pop();
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.query_stats),
-            title: const Text("Stats", textAlign: TextAlign.center,),
-            onTap: (){
-              if(context.widget.toString() != "StatsPageSend"){
-                Navigator.of(context).pop();
-                Navigator.of(context).push(MaterialPageRoute(builder: (context) =>StatsPageSend()));
-              }
-              else {
-                Navigator.of(context).pop();
-              }
-            },
-          ),       
-        ],
-      ),
-    ),
-  ),
+        ),
         appBar: AppBar(
           title: AutoSizeText('Games (' + shownItems.length.toString() +')', maxLines: 1,),
           actions: [
@@ -441,6 +509,7 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
   int? idx;
   late List<Person> ppl; 
   late GamePlayedItem item;
+  Users? user;
   List<TextEditingController> tecScores = List.empty(growable: true);
   AppBar appbar = AppBar();
   GamePlayedPage(this.idx);
@@ -661,7 +730,7 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
               }
               int maxIdx = 0;
               for(int i=0;i<item.players.length;i++){
-                if(maxIdx < item.players[i].score){
+                if(item.players[maxIdx].score < item.players[i].score){
                   maxIdx = i;
                 }
               }
@@ -690,7 +759,7 @@ void _saveAll(BuildContext context)async{
   final externalDir = await getExternalStorageDirectory();
   await File(externalDir!.path + "/Save.json").writeAsString(jsonEncode(allItems));
   shownItems = _queryGame('');
-  Navigator.of(context).push(MaterialPageRoute(builder: (context)=>const MyHomePage()));
+  Navigator.of(context).push(MaterialPageRoute(builder: (context)=> MyHomePage()));
 }
 int _findIdxRelativeToAll(int shownIdx){
   for(int i=0;i<allItems.length;i++){
