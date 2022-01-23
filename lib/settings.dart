@@ -30,7 +30,6 @@ class SettingsPage extends State<SettingsPageSend>{
             ElevatedButton.icon(onPressed: () async{
               runApp(const MyApp());
               Navigator.of(context).push(MaterialPageRoute(builder: (context)=>const AuthenticationWrapper()));
-              // Navigator.of(context).push(MaterialPageRoute(builder: (context)=>BackupRestorePageSend()));
             }, icon: const Icon(Icons.import_export), label: const Text("Backup/Restore"))
           ],
         ),

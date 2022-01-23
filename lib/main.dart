@@ -7,11 +7,14 @@ import 'package:game_scores/AuthenticationServices.dart';
 import 'package:game_scores/backup_restore.dart';
 import 'package:game_scores/initial.dart';
 import 'package:game_scores/person.dart';
+import 'package:game_scores/preferences.dart';
 import 'package:game_scores/settings.dart';
 import 'package:game_scores/stats.dart';
 import 'package:game_scores/user.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
+import 'package:speech_to_text/speech_recognition_result.dart';
 import 'game_played_item.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -19,10 +22,12 @@ import 'package:intl/intl.dart';
 import 'package:http/http.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/src/provider.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 List<GamePlayedItem> allItems = List.empty(growable: true);
 List<GamePlayedItem> shownItems = List.empty(growable: true);
 List<String> games = List.filled(1, '', growable: true);
 List<String> players = List.filled(1, '', growable: true);
+
 void fillUniqueLists(){
   for(GamePlayedItem itm in allItems){
     bool unique = true;
@@ -47,6 +52,44 @@ void fillUniqueLists(){
       }
       if(unique) {
         players.add(itm.players[i].name);
+      }
+    }
+  }
+}
+void tryBackup() async{
+  final externalDir = await getExternalStorageDirectory();
+  if(await File(externalDir!.path+"/Preferences.json").exists()){
+    String readPref = await File(externalDir.path+"/Preferences.json").readAsString();
+    pref = Preferences.empty();
+    Map<String, dynamic> prefs = jsonDecode(readPref);
+    prefs.forEach((key, value) {
+      switch(key){
+        case('user'):
+          pref!.user = value;
+          break;
+        case('backupFrequency'):
+          pref!.backupFrequency = value;
+          break;
+      }
+    });
+    var doc = await FirebaseFirestore.instance.collection('Users').doc(pref!.user).get();
+    DateTime dateUpdated = DateTime.parse(doc.get('dateUpdated'));
+    int frequencyDays = 0;
+    switch(pref!.backupFrequency){
+      case('Day'):
+        frequencyDays = 1;
+        break;
+      case('Week'):
+        frequencyDays = 7;
+        break;
+      case('Month'):
+        frequencyDays = 30;
+        break;
+    }
+    if(DateUtils.dateOnly(dateUpdated.add(Duration(days: frequencyDays))).compareTo(DateUtils.dateOnly(DateTime.now())) < 1){
+      String readSave = await File(externalDir.path+"/Save.json").readAsString();
+      if(doc.get('save') != readSave) {
+        FirebaseFirestore.instance.collection('Users').doc(pref!.user).update({'dateUpdated': DateTime.now().toString(), 'save': readSave});
       }
     }
   }
@@ -117,6 +160,23 @@ Future<void> readSave()async{
     await File(externalDir.path +'/Save.json').create();
   }
 }
+void listenMic()async{
+  SpeechToText speech = SpeechToText();
+  bool available = await speech.initialize( onStatus: (String str){
+    print(str.toString());
+  }, onError: (SpeechRecognitionError error){
+    print(error.toString());
+  } );
+  if ( available ) {
+      speech.listen( onResult: (SpeechRecognitionResult recognized){
+        print(recognized.recognizedWords);
+
+      } );
+  }
+  else {
+      print("The user has denied the use of speech recognition.");
+  }
+}
 void main() async{
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
@@ -154,7 +214,7 @@ class MyApp extends StatelessWidget {
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        title:  'Get Started',
+        title:  'Game Scores',
         theme: ThemeData(
           brightness: SchedulerBinding.instance!.window.platformBrightness,
         appBarTheme: const AppBarTheme(
@@ -162,7 +222,7 @@ class MyApp extends StatelessWidget {
           backgroundColor: Colors.deepPurple),
           primarySwatch: Colors.deepPurple,
         ),
-        home: MyHomePage()
+        home: const MyHomePage()
       ),
     );
   }
@@ -219,7 +279,6 @@ List<GamePlayedItem> _filterItems(String filterPlayer, String filterGame){
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({Key? key}) : super(key: key);
-
   @override
   State<MyHomePage> createState() => _MyHomePageState();
 }
@@ -229,6 +288,11 @@ class _MyHomePageState extends State<MyHomePage> {
   String filterPlayer = '', filterGame = '';
   List<bool> selectedTile = List.filled(shownItems.length, false);
   _MyHomePageState();
+  @override
+  void initState() {
+    tryBackup();
+    super.initState();
+  }
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -252,8 +316,9 @@ class _MyHomePageState extends State<MyHomePage> {
                     Navigator.of(context).pop();
                     Navigator.of(context).push(MaterialPageRoute(builder: (context) =>MyHomePage()));
                   }
-                  else
+                  else {
                     Navigator.of(context).pop();
+                  }
                 },
               ),
               ListTile(
@@ -403,6 +468,12 @@ class _MyHomePageState extends State<MyHomePage> {
             }, icon: const Icon(Icons.add))
           ],
         ),
+        floatingActionButton: FloatingActionButton(
+          child: const Icon(Icons.mic),
+          onPressed: (){
+            listenMic();
+          },
+        ),
         body: Scrollbar(
           isAlwaysShown: true,
           child: ListView.builder(
@@ -510,7 +581,7 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
   late List<Person> ppl; 
   late GamePlayedItem item;
   Users? user;
-  List<TextEditingController> tecScores = List.empty(growable: true);
+  List<TextEditingController> tecScores = List.empty(growable: true), tecScoresAdd = List.empty(growable: true);
   AppBar appbar = AppBar();
   GamePlayedPage(this.idx);
   @override
@@ -522,9 +593,11 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
       item = GamePlayedItem(shownItems[idx!].game, shownItems[idx!].players, shownItems[idx!].date, 0);
       for(int i=0;i<item.players.length;i++){
         tecScores.add(TextEditingController(text: item.players[i].score.toString()));
+        tecScoresAdd.add(TextEditingController(text: '0'));
       }
     }
     tecScores.add(TextEditingController(text: '0'));
+        tecScoresAdd.add(TextEditingController(text: '0'));
     super.initState();
   }
   @override
@@ -615,7 +688,7 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                   actions: [
                     ElevatedButton(onPressed: (){
                       Navigator.pop(context);
-                      if(previousSelectedName == '' && tecPlayerName.text == '')return;
+                      if((previousSelectedName == '' && tecPlayerName.text == '') || item.players.any((element) => element.name == previousSelectedName))return;
                       int score = tecPlayerScore.text==''?0:int.parse(tecPlayerScore.text);
                       Person? p;
                       if(previousSelectedName == ''){
@@ -628,6 +701,7 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                         item.players.add(p!);
                         tecScores.elementAt(tecScores.length - 1).text = score.toString();
                         tecScores.add(TextEditingController(text: '0'));
+                        tecScoresAdd.add(TextEditingController(text: '0'));
                       });
                     }, child: const Text("Confirm"))
                   ],
@@ -690,38 +764,63 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                  ),
                ],
              ),
-             Card(
-               child: SizedBox(
-                 width: MediaQuery.of(context).size.width/2,
-                 height: MediaQuery.of(context).size.height/2,
-                 child: ListView.builder(
-                  itemCount: item.players.length,
-                  itemBuilder: ((BuildContext context, int index) {
-                    return ListTile(
-                      leading: Text(item.players[index].name),
-                      trailing: SizedBox(
-                        width: 50,
-                        child: TextField(
-                          textAlign: TextAlign.center,
-                          keyboardType: TextInputType.number,
-                          controller: tecScores[index],
-                          onChanged: (String n){
-                            if(n != '' && n != ' ') {
-                              if(n[0] == '0') {
-                                n = n.substring(1, n.length);
-                                setState(() {
-                                  tecScores[index] = TextEditingController(text: n);
-                                });
-                              }
-                              item.players[index].score = int.parse(n);
-                            }
-                          },
-                        ),
-                      ),
+             SizedBox(
+               height: MediaQuery.of(context).size.height/2,
+               child: ListView.builder(
+                itemCount: item.players.length,
+                itemBuilder: ((BuildContext context, int index) {
+                  return Card(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children:
+                        [
+                          Text(item.players[index].name),
+                          SizedBox(
+                            width: 50,
+                            child: TextField(
+                              textAlign: TextAlign.center,
+                              keyboardType: TextInputType.number,
+                              controller: tecScores[index],
+                              onChanged: (String n){
+                                if(n != '' && n != ' ') {
+                                  if(n[0] == '0') {
+                                    n = n.substring(1, n.length);
+                                    setState(() {
+                                      tecScores[index] = TextEditingController(text: n);
+                                    });
+                                  }
+                                  item.players[index].score = int.parse(n);
+                                }
+                              },
+                            ),
+                          ),
+                          Column(
+                            children:  [
+                              SizedBox(
+                                width: 50,
+                                child: 
+                                  TextField(
+                                    keyboardType: TextInputType.number,
+                                    textAlign: TextAlign.center,
+                                    controller: tecScoresAdd[index],
+                                  ),
+                              ),
+                              const SizedBox(width: 100,),
+                              IconButton(onPressed: (){
+                                if(tecScoresAdd[index].text != '0'){
+                                  setState(() {
+                                    tecScores[index].text = (int.parse(tecScores[index].text) + int.parse(tecScoresAdd[index].text)).toString();
+                                  });
+                                  item.players[index].score = int.parse(tecScores[index].text);
+                                }
+                              }, icon: const Icon(Icons.add))
+                            ],
+                          )
+                        ]
+                      )
                     );
-                  }),
-                ),
-               ),
+                }),
+              ),
              ),
             ElevatedButton.icon(onPressed: () async{
               if(item.game == '' || item.players.isEmpty){
@@ -745,6 +844,7 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                 }
                 fillUniqueLists();
               });
+              item.players.sort((a, b) => b.score.compareTo(a.score));
               _saveAll(context);
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved.', textAlign: TextAlign.center))); 
             }, icon: const Icon(Icons.save), label: const Text('Save'))
