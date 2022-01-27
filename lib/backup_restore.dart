@@ -85,7 +85,7 @@ class BackupRestorePage extends State<BackupRestorePageSend>{
                       print(json);
                       await File(externalDir!.path + "/Save.json").writeAsString(json);
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: Theme.of(context).backgroundColor, content: Text('Successfully restored from '  + user!.email!)));
-                      Navigator.of(context).push(MaterialPageRoute(builder: (context)=>MyHomePage()));
+                      Navigator.of(context).push(MaterialPageRoute(builder: (context)=>const MyHomePage()));
                     }catch(e){
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: Theme.of(context).backgroundColor, content: Text('Error from account: '  + user!.email!+" - " + e.toString())));
                     }
