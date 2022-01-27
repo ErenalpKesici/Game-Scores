@@ -12,11 +12,12 @@ import 'package:game_scores/preferences.dart';
 import 'package:game_scores/settings.dart';
 import 'package:game_scores/stats.dart';
 import 'package:game_scores/user.dart';
+import 'package:googleapis/cloudbuild/v1.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
-import 'edit_players.dart';
+import 'edit_players_games.dart';
 import 'game_played_item.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -177,8 +178,9 @@ void listenMic(BuildContext context)async{
       int? add = int.tryParse(commands[1]);
       if(add != null){
         allItems.first.players[allItems.first.players.indexWhere((element) => element.name.toLowerCase().trim() == commands[0].toLowerCase().trim())].score += add;
-        _saveAll(context);
+        saveAll(context);
         Navigator.of(context).push(MaterialPageRoute(builder: (context)=>const MyHomePage()));
+        speech.cancel();
       }
     });
   }
@@ -226,11 +228,12 @@ class MyApp extends StatelessWidget {
         title:  'Game Scores',
         theme: ThemeData(
           brightness: SchedulerBinding.instance!.window.platformBrightness,
-        appBarTheme: const AppBarTheme(
-          foregroundColor: Colors.white,
-          backgroundColor: Colors.deepPurple),
-          primarySwatch: Colors.deepPurple,
-        ),
+
+          appBarTheme: const AppBarTheme(
+            foregroundColor: Colors.white,
+            backgroundColor: Colors.deepPurple),
+            primarySwatch: Colors.deepPurple,
+          ),
         home: const MyHomePage()
       ),
     );
@@ -345,11 +348,11 @@ class _MyHomePageState extends State<MyHomePage> {
               ),     
               ListTile(
                 leading: const Icon(Icons.edit),
-                title: const Text("Edit Players", textAlign: TextAlign.center,),
+                title: const Text("Edit Players and Games", textAlign: TextAlign.center,),
                 onTap: (){
                   if(context.widget.toString() != "EditPlayersPageSend"){
                     Navigator.of(context).pop();
-                    Navigator.of(context).push(MaterialPageRoute(builder: (context) =>EditPlayersPageSend()));
+                    Navigator.of(context).push(MaterialPageRoute(builder: (context) =>EditPlayersGamesPageSend()));
                   }
                   else {
                     Navigator.of(context).pop();
@@ -393,11 +396,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       builder: (BuildContext context, void Function(void Function()) setInnerState) { 
                         return 
                         Column(children: [
-                          const Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: Text("Filter by:"),
-                          ),
-                          Row(
+                          Column(
                             children: [
                               const Padding(
                                 padding: EdgeInsets.all(4.0),
@@ -475,7 +474,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     allItems=newAllItems;
                     shownItems = allItems;
                   });
-                  _saveAll(context);
+                  saveAll(context);
                 }, icon: const Icon(Icons.delete)),
             if(selectedTile.isNotEmpty && selectedTile.every((element) => element))
               IconButton(
@@ -539,7 +538,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 onDismissed: (DismissDirection direction){
                   setState(() {
                     shownItems.removeAt(index);
-                    _saveAll(context);
+                    saveAll(context);
                   });
                 },
                 child: Card(
@@ -550,20 +549,23 @@ class _MyHomePageState extends State<MyHomePage> {
                         selectedTile[index] = true;
                       });
                     },
+                    isThreeLine: true,
                     selected: selectedTile[index],
-                    leading: SizedBox(
+                    subtitle: SizedBox(
                       width: MediaQuery.of(context).size.width / 2,
-                      child: Row(
-                        children: [
-                          const Icon(Icons.access_time_sharp),
-                          const SizedBox(width: 10,),
-                          Text(DateFormat('dd/MMM/yy hh:mm').format(shownItems[index].date)),
-                        ],
-                      ),
+                      child:
+                        Text(DateFormat('dd/MMM/yy hh:mm').format(shownItems[index].date)),
                     ),
-                    title: Text(shownItems[index].game, textAlign: TextAlign.end,),
-                    subtitle: Text(shownItems[index].players.toString(), textAlign: TextAlign.end,),
-                    trailing: const Icon(Icons.games),
+                    title: Text(shownItems[index].game,),
+                    trailing: SizedBox(
+                      width: 100,
+                      child: ListView.builder(itemCount: shownItems[index].players.length, itemBuilder: (BuildContext context, int idx){
+                        return Padding(
+                          padding: const EdgeInsets.all(2.0),
+                          child: Text(shownItems[index].players[idx].name+": "+shownItems[index].players[idx].score.toString()),
+                        ); 
+                      }),
+                    ),
                     onTap: (){
                       if(selectedTile.contains(true)){
                         setState(() {
@@ -575,8 +577,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           }
                         });
                       }
-                      else {
-                        
+                      else {   
                         Navigator.of(context).push(_transition(GamePlayedPageSend(idx: index,)));
                       }
                     },
@@ -643,11 +644,13 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                         ),
                       actions: [
                         ElevatedButton(onPressed: (){
+                          if(!games.contains(tecGame.text)){
+                            setState(() {
+                              games.add(tecGame.text);
+                            });
+                          }
                           Navigator.pop(context);
-                          setState(() {
-                            games.add(tecGame.text);
-                            item.game = tecGame.text;
-                          });
+                          item.game = tecGame.text;
                         }, child: const Text("Confirm"))
                       ],
                     );
@@ -710,7 +713,7 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                   actions: [
                     ElevatedButton(onPressed: (){
                       Navigator.pop(context);
-                      if((previousSelectedName == '' && tecPlayerName.text == '') || item.players.any((element) => element.name == previousSelectedName))return;
+                      if((previousSelectedName == '' && tecPlayerName.text == '') || item.players.any((element) => (element.name == previousSelectedName) || element.name == tecPlayerName.text))return;
                       int score = tecPlayerScore.text==''?0:int.parse(tecPlayerScore.text);
                       Person? p;
                       if(previousSelectedName == ''){
@@ -748,7 +751,7 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                       }
                     }
                     allItems = deletedList;
-                    _saveAll(context);
+                    saveAll(context);
                   },
                   child: Row(children: const [Icon(Icons.delete), Text('Delete')]) ,
                 ),
@@ -867,7 +870,7 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
                 fillUniqueLists();
               });
               item.players.sort((a, b) => b.score.compareTo(a.score));
-              _saveAll(context);
+              saveAll(context);
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved.', textAlign: TextAlign.center))); 
             }, icon: const Icon(Icons.save), label: const Text('Save'))
            ],
@@ -877,7 +880,7 @@ class GamePlayedPage extends State<GamePlayedPageSend>{
    ); 
   }
 }
-void _saveAll(BuildContext context)async{
+void saveAll(BuildContext context)async{
   final externalDir = await getExternalStorageDirectory();
   await File(externalDir!.path + "/Save.json").writeAsString(jsonEncode(allItems));
   shownItems = _queryGame('');
