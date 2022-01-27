@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,6 +16,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
+import 'edit_players.dart';
 import 'game_played_item.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -23,11 +25,11 @@ import 'package:http/http.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/src/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart';
+// import 'package:google_speech/google_speech.dart';
 List<GamePlayedItem> allItems = List.empty(growable: true);
 List<GamePlayedItem> shownItems = List.empty(growable: true);
 List<String> games = List.filled(1, '', growable: true);
 List<String> players = List.filled(1, '', growable: true);
-
 void fillUniqueLists(){
   for(GamePlayedItem itm in allItems){
     bool unique = true;
@@ -160,7 +162,7 @@ Future<void> readSave()async{
     await File(externalDir.path +'/Save.json').create();
   }
 }
-void listenMic()async{
+void listenMic(BuildContext context)async{
   SpeechToText speech = SpeechToText();
   bool available = await speech.initialize( onStatus: (String str){
     print(str.toString());
@@ -168,10 +170,17 @@ void listenMic()async{
     print(error.toString());
   } );
   if ( available ) {
-      speech.listen( onResult: (SpeechRecognitionResult recognized){
-        print(recognized.recognizedWords);
-
-      } );
+    speech.listen(localeId: 'tr_TR', onResult: (SpeechRecognitionResult recognized){
+      String heard = recognized.recognizedWords;
+      List<String> commands = heard.split(' ');
+      print(recognized.recognizedWords+" -  "+recognized.confidence.toString());
+      int? add = int.tryParse(commands[1]);
+      if(add != null){
+        allItems.first.players[allItems.first.players.indexWhere((element) => element.name.toLowerCase().trim() == commands[0].toLowerCase().trim())].score += add;
+        _saveAll(context);
+        Navigator.of(context).push(MaterialPageRoute(builder: (context)=>const MyHomePage()));
+      }
+    });
   }
   else {
       print("The user has denied the use of speech recognition.");
@@ -333,7 +342,20 @@ class _MyHomePageState extends State<MyHomePage> {
                     Navigator.of(context).pop();
                   }
                 },
-              ),       
+              ),     
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text("Edit Players", textAlign: TextAlign.center,),
+                onTap: (){
+                  if(context.widget.toString() != "EditPlayersPageSend"){
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(MaterialPageRoute(builder: (context) =>EditPlayersPageSend()));
+                  }
+                  else {
+                    Navigator.of(context).pop();
+                  }
+                },
+              ),    
               ListTile(
                 leading: const Icon(Icons.settings),
                 title: const Text("Settings", textAlign: TextAlign.center,),
@@ -470,8 +492,8 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
         floatingActionButton: FloatingActionButton(
           child: const Icon(Icons.mic),
-          onPressed: (){
-            listenMic();
+          onPressed: () async{
+            listenMic(context);
           },
         ),
         body: Scrollbar(
